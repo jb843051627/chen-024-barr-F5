@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org" xmlns:sec="http://www.pollix.at/thymeleaf/shiro">
+<head>
+    <th:block th:include="include :: header('质保养护复检')"/>
+</head>
+<body class="pear-container">
+<div class="layui-card">
+    <div class="layui-card-body">
+        <form class="layui-form" id="visit-query-form">
+            <div class="layui-form-item">
+                <label class="layui-form-label">条目代号</label>
+                <div class="layui-input-inline">
+                    <input type="text" name="itemNo" placeholder="整段或开头几笔" class="layui-input">
+                </div>
+                <label class="layui-form-label">情形</label>
+                <div class="layui-input-inline">
+                    <select name="status">
+                        <option value="">全部</option>
+                        <option value="0">搁着</option>
+                        <option value="1">递出去了</option>
+                        <option value="2">递不动</option>
+                    </select>
+                </div>
+                <label class="layui-form-label">所属季</label>
+                <div class="layui-input-inline">
+                    <input type="text" name="season" th:value="${season}" placeholder="如 2026Q4" class="layui-input">
+                </div>
+                <button class="pear-btn pear-btn-md pear-btn-primary" lay-submit lay-filter="visit-query">
+                    <i class="layui-icon layui-icon-search"></i> 查询
+                </button>
+                <button type="reset" class="pear-btn pear-btn-md">
+                    <i class="layui-icon layui-icon-refresh"></i> 重置
+                </button>
+                <button shiro:hasPermission="barr:barrVisitItem:run" type="button"
+                        class="pear-btn pear-btn-md pear-btn-warming" id="btn-run">
+                    <i class="layui-icon layui-icon-release"></i> 手动开跑一趟
+                </button>
+                <span class="layui-badge layui-bg-gray">每日 02:00–05:00 跑动，其余时候只回话不动库</span>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="layui-card">
+    <div class="layui-card-body">
+        <table id="visit-table" lay-filter="visit-table"></table>
+    </div>
+</div>
+</body>
+
+<script type="text/html" id="visit-status-tpl">
+    {{# if(d.status==1){ }}
+    <span class="layui-badge layui-bg-green">递出去了</span>
+    {{# } else if(d.status==2){ }}
+    <span class="layui-badge">递不动</span>
+    {{# } else { }}
+    <span class="layui-badge layui-bg-blue">搁着</span>
+    {{# } }}
+</script>
+
+<th:block th:include="include :: footer"/>
+<script>
+    layui.use(['table', 'form', 'jquery', 'layer'], function () {
+        let table = layui.table;
+        let form = layui.form;
+        let $ = layui.jquery;
+        let layer = layui.layer;
+        let MODULE_PATH = rootPath + "/BarrVisitItemController/";
+
+        let cols = [[
+            {title: 'ID', field: 'id', hide: true},
+            {title: '条目代号', field: 'itemNo', width: 150},
+            {title: '止点时刻', field: 'dueAt', width: 170},
+            {title: '许提前(成事日)', field: 'amount', width: 130, align: 'center'},
+            {title: '所在街', field: 'streetName', width: 110},
+            {title: '楼组片', field: 'groupNo', width: 100},
+            {title: '经办', field: 'ownerName', width: 110},
+            {title: '所属季', field: 'season', width: 90, align: 'center'},
+            {title: '事由与住户记要', field: 'content', minWidth: 200},
+            {title: '情形', field: 'status', width: 100, templet: '#visit-status-tpl'},
+            {title: '递出时刻', field: 'deliveredAt', width: 170},
+            {title: '递出经办', field: 'deliveredBy', width: 110},
+            {title: '卡壳缘故', field: 'stallReason', minWidth: 200}
+        ]];
+
+        table.render({
+            elem: '#visit-table',
+            url: MODULE_PATH + 'list',
+            page: true,
+            method: 'get',
+            limit: 10,
+            limits: [10, 20, 50],
+            cols: cols,
+            skin: 'line',
+            defaultToolbar: ['filter', 'print', 'exports']
+        });
+
+        form.on('submit(visit-query)', function () {
+            let q = {};
+            $('#visit-query-form').serializeArray().forEach(function (kv) {
+                q[kv.name] = $.trim(kv.value);
+            });
+            table.reload('visit-table', {where: q, page: {curr: 1}});
+            return false;
+        });
+
+        // 街口与后台日跑同一个口子；窗口外按下去，只听见"这一趟没动过库"
+        $('#btn-run').on('click', function () {
+            let btn = $(this);
+            btn.attr('disabled', true);
+            $.ajax({
+                url: MODULE_PATH + 'run',
+                type: 'post',
+                success: function (res) {
+                    if (res.code !== 200 || !res.data) {
+                        layer.msg(res.msg || '开跑没成');
+                        return;
+                    }
+                    let d = res.data;
+                    if (!d.ran) {
+                        layer.alert(d.message, {title: '这一趟没动过库', icon: 7});
+                        return;
+                    }
+                    layer.alert(d.message
+                        + '<br>还欠开口：' + d.waiting
+                        + '<br>递出去了：' + d.delivered
+                        + '<br>递不动：' + d.stalled, {title: '本趟交账'});
+                    table.reload('visit-table');
+                },
+                complete: function () {
+                    btn.removeAttr('disabled');
+                }
+            });
+        });
+    });
+</script>
+</html>

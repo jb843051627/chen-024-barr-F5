@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <th:block th:include="include :: header('当场验收落簿')"/>
+</head>
+<body>
+<form class="layui-form">
+    <div class="mainBox">
+        <div class="layui-form-item">
+            <label class="layui-form-label">挂靠底册</label>
+            <div class="layui-input-block">
+                <select name="archId" lay-verify="required" lay-search="">
+                    <option value="">请选在册底册（停用底册落不了簿）</option>
+                    <option th:each="a : ${archList}"
+                            th:value="${a.id}"
+                            th:text="${a.archNo} + '｜' + ${a.archName} + '｜' + ${a.roadName}"></option>
+                </select>
+            </div>
+        </div>
+        <div class="layui-form-item">
+            <label class="layui-form-label">楼组片号</label>
+            <div class="layui-input-block">
+                <input type="text" name="groupNo" required lay-verify="required" autocomplete="off"
+                       placeholder="一个楼组几户一道改、一场验收" class="layui-input">
+            </div>
+        </div>
+        <div class="layui-form-item">
+            <label class="layui-form-label">合验户数</label>
+            <div class="layui-input-inline" style="width:160px;">
+                <input type="text" name="siteCount" required lay-verify="required" autocomplete="off"
+                       placeholder="正整数，楼组里一道改的几户" class="layui-input">
+            </div>
+        </div>
+        <div class="layui-form-item">
+            <label class="layui-form-label">当场时刻</label>
+            <div class="layui-input-block">
+                <input type="text" name="acceptTime" autocomplete="off"
+                       placeholder="空着落当下；或按 yyyy-MM-dd HH:mm:ss 写" class="layui-input">
+            </div>
+        </div>
+        <div class="layui-form-item">
+            <label class="layui-form-label">受理簿记录号</label>
+            <div class="layui-input-block" style="padding-top:9px;">
+                <span class="layui-word-aux">由系统按日排号（YS-日期-序号），不摆录入格；落笔者随登录身份自动落</span>
+            </div>
+        </div>
+        <div class="layui-form-item">
+            <label class="layui-form-label">备注</label>
+            <div class="layui-input-block">
+                <input type="text" name="remark" autocomplete="off" class="layui-input">
+            </div>
+        </div>
+    </div>
+    <div class="bottom">
+        <div class="button-container">
+            <button type="submit" class="layui-btn layui-btn-normal layui-btn-sm" lay-submit lay-filter="accept-save">
+                <i class="layui-icon layui-icon-ok"></i> 落簿
+            </button>
+            <button type="reset" class="layui-btn layui-btn-primary layui-btn-sm">
+                <i class="layui-icon layui-icon-refresh"></i> 重置
+            </button>
+        </div>
+    </div>
+</form>
+<th:block th:include="include :: footer"/>
+<script>
+    layui.use(['form', 'jquery'], function () {
+        let form = layui.form;
+        let MODULE_PATH = rootPath + "/BarrAcceptRecordController";
+
+        form.on('submit(accept-save)', function (data) {
+            $.ajax({
+                url: MODULE_PATH + '/register',
+                data: data.field,
+                dataType: 'json',
+                type: 'post',
+                success: function (result) {
+                    if (result.code == 200) {
+                        layer.msg(result.msg, {icon: 1, time: 1400}, function () {
+                            parent.layer.close(parent.layer.getFrameIndex(window.name));
+                            parent.layui.table.reload("accept-table");
+                        });
+                    } else {
+                        layer.msg(result.msg, {icon: 2, time: 3200});
+                    }
+                }
+            });
+            return false;
+        });
+    });
+</script>
+</body>
+</html>

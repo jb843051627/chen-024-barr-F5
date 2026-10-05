@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <th:block th:include="include :: header('由当场验收带出签认单')"/>
+</head>
+<body>
+<form class="layui-form">
+    <div class="mainBox">
+        <div th:if="${record == null}" class="layui-form-item">
+            <div class="layui-input-block">
+                <span class="layui-badge">这场验收在受理簿上翻不着，签认单带不出来；别处另起手建的一张不算</span>
+            </div>
+        </div>
+        <div th:if="${record != null}">
+            <table class="layui-table" style="margin:0;">
+                <tr><td style="width:120px;">受理簿记录号</td><td th:text="${record.acceptNo}"></td></tr>
+                <tr><td>楼组片号</td><td th:text="${record.groupNo}"></td></tr>
+                <tr><td>底册</td><td th:text="${record.archNo} + '｜' + ${record.archName}"></td></tr>
+                <tr><td>所在街</td><td th:text="${record.streetName}"></td></tr>
+                <tr><td>合验户数</td><td th:text="${record.siteCount}"></td></tr>
+                <tr><td>当场时刻</td><td th:text="${record.acceptTime}"></td></tr>
+                <tr><td>落笔者</td><td th:text="${record.holder}"></td></tr>
+            </table>
+            <div style="margin:12px 0 0 0;">
+                <span class="layui-word-aux">点下方按钮即由这场验收关联带出那一张签认单（同一场只带得出那一张，重复点回的还是同一张）；单号由记录号带出，记录上已有的字段单上直接沿用。</span>
+            </div>
+        </div>
+    </div>
+    <div class="bottom">
+        <div class="button-container">
+            <button th:if="${record != null}" type="button" id="open-btn"
+                    class="layui-btn layui-btn-warming layui-btn-sm">
+                <i class="layui-icon layui-icon-form"></i> 由这场验收带签认单
+            </button>
+            <button type="button" class="layui-btn layui-btn-primary layui-btn-sm" onclick="closeSelf()">
+                <i class="layui-icon layui-icon-close"></i> 关掉
+            </button>
+        </div>
+    </div>
+</form>
+<th:block th:include="include :: footer"/>
+<script th:inline="javascript">
+    let acceptId = /*[[${record != null ? record.id : null}]]*/ null;
+    layui.use(['jquery'], function () {
+        let $ = layui.jquery;
+        let SIGN_PATH = rootPath + "/BarrJointSignController";
+        $('#open-btn').on('click', function () {
+            $.post(SIGN_PATH + '/open', {acceptId: acceptId}, function (res) {
+                if (res.code === 200) {
+                    layer.msg(res.msg, {icon: 1, time: 1200}, function () {
+                        // 带单成功后关掉本弹窗，刷新父级台账，并打开签认单面
+                        parent.layer.close(parent.layer.getFrameIndex(window.name));
+                        if (parent.window.reloadBillTable) {
+                            parent.window.reloadBillTable();
+                        }
+                        parent.layer.open({
+                            type: 2, title: '联户验收签认单', shade: 0.1, area: ['900px', '640px'],
+                            content: SIGN_PATH + '/page/' + res.billId
+                        });
+                    });
+                } else {
+                    layer.msg(res.msg, {icon: 2, time: 3200});
+                }
+            }, 'json');
+        });
+    });
+    function closeSelf() {
+        parent.layer.close(parent.layer.getFrameIndex(window.name));
+    }
+</script>
+</body>
+</html>

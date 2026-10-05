@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <th:block th:include="include :: header('联户验收签认单')"/>
+    <style>
+        .node-card {border:1px solid #e2e2e2;border-radius:6px;margin-bottom:12px;opacity:.55;background:#fafafa;}
+        .node-card.lit {border-color:#FFB800;opacity:1;background:#fff8e6;box-shadow:0 0 0 2px rgba(255,184,0,.15);}
+        .node-card.done {border-color:#5FB878;opacity:1;background:#f6fff9;}
+        .node-card.finished {border-color:#393D49;opacity:1;background:#fafafa;}
+        .four-cell {display:inline-block;min-width:150px;margin-right:18px;vertical-align:top;}
+        .four-cell .k {color:#888;font-size:12px;}
+        .four-cell .v {font-weight:bold;font-size:15px;}
+        .signed-readonly {background:#f2f2f2 !important;color:#333 !important;font-weight:bold;}
+        .line-void {color:#999;text-decoration:line-through;}
+        .round-sep {display:inline-block;margin:0 6px;padding:0 6px;background:#eee;border-radius:3px;font-size:12px;}
+    </style>
+</head>
+<body class="pear-container" style="padding:12px;">
+<div class="layui-card">
+    <div class="layui-card-body" id="bill-head" style="line-height:28px;">加载中…</div>
+</div>
+<div id="nodes"></div>
+</body>
+
+<th:block th:include="include :: footer"/>
+<script th:inline="javascript">
+    let BILL_ID = /*[[${billId}]]*/ 0;
+    layui.use(['jquery', 'layer'], function () {
+        let $ = layui.jquery;
+        let MODULE_PATH = rootPath + "/BarrJointSignController/";
+        let SEAT_LABEL = {
+            HOUSEHOLD: '住户本人/看护人',
+            BUILDER: '施工方',
+            ASSESSOR: '第三方评估机构',
+            DISTRICT: '区残联',
+            CITY: '市残联'
+        };
+        let RULE_LABEL = {
+            FIRST_PASS: '一名即过（谁先落这一口的笔，这一口便算过）',
+            FIRST_DECIDE: '两方先笔定调（等两名；先落笔那方怎么说就怎么定，后一名照累、两行都留底）',
+            RULE_UNANIMOUS: '两名同判（区、市残联都写「可」才算数；一可一不可挂待定）'
+        };
+        let NODE_NAMES = ['第一口·住户本人或看护人', '第二口·施工方与第三方评估机构', '第三口·区残联与市残联'];
+
+        function load() {
+            $.get(MODULE_PATH + 'detail/' + BILL_ID, function (res) {
+                if (res.code !== 200) {
+                    $('#bill-head').html('<span style="color:#FF5722;">' + res.msg + '</span>');
+                    return;
+                }
+                render(res.data);
+            });
+        }
+
+        function esc(s) {
+            return (s == null ? '' : String(s)).replace(/[&<>"]/g, function (c) {
+                return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c];
+            });
+        }
+
+        function render(d) {
+            let finished = d.status === 1;
+            $('#bill-head').html(
+                '<span class="layui-badge ' + (finished ? 'layui-bg-black' : 'layui-bg-orange') + '">'
+                + (finished ? '已签讫：一笔进不来、一字改不了、整张抽不走' : '在签') + '</span> '
+                + '<b>' + esc(d.billNo) + '</b>　受理簿：' + esc(d.acceptNo)
+                + '　楼组：' + esc(d.groupNo) + '　底册：' + esc(d.archNo) + ' ' + esc(d.archName)
+                + '　街：' + esc(d.streetName) + '　合验 ' + (d.siteCount == null ? '' : d.siteCount) + ' 户'
+                + '　当场：' + (d.acceptTime || '')
+                + (finished ? '　签讫：' + (d.finishedTime || '') : '　单停：<b>第' + (d.currentNode + 1) + '段</b>　第' + d.roundNo + '轮')
+            );
+
+            let html = '';
+            d.nodes.forEach(function (n) {
+                let cls = finished ? (n.complete ? 'done' : 'finished') : (n.lit ? 'lit' : (n.complete ? 'done' : ''));
+                html += '<div class="node-card ' + cls + '" data-node="' + n.nodeNo + '">';
+                html += '<div style="padding:10px 12px;border-bottom:1px dashed #ddd;"><b>' + esc(n.nodeName) + '</b>'
+                    + (n.lit ? ' <span class="layui-badge layui-bg-orange">当前口·亮着</span>' : '')
+                    + (n.complete ? ' <span class="layui-badge layui-bg-green">已点齐</span>' : '')
+                    + (n.splitPending ? ' <span class="layui-badge">同判分歧·挂待定（同席再落笔改判，旧笔留底）</span>' : '')
+                    + '</div>';
+                // 每一口开四栏
+                html += '<div style="padding:10px 12px;">'
+                    + '<span class="four-cell"><span class="k">该几个人签</span><br><span class="v">' + n.needCount + ' 人</span></span>'
+                    + '<span class="four-cell"><span class="k">按什么规矩算齐</span><br><span class="v" style="font-size:13px;">' + esc(RULE_LABEL[n.rule] || n.rule) + '</span></span>'
+                    + '<span class="four-cell"><span class="k">当下已签几人（系统数出）</span><br>'
+                    +   '<input class="layui-input signed-readonly" style="width:90px;text-align:center;" readonly value="' + n.signedCount + '">'
+                    + '</span>'
+                    + '<span class="four-cell"><span class="k">整张单停在第几段</span><br><span class="v">'
+                    +   (finished ? '已走完（签讫）' : ('第' + (d.currentNode + 1) + '段')) + '</span></span>'
+                    + '</div>';
+
+                // 两行（各席位写下的）都看得见；本轮笔迹与上轮笔迹分开放
+                html += '<div style="padding:0 12px 8px 12px;">';
+                if (!n.lines.length) {
+                    html += '<span style="color:#999;">本口还没落笔</span>';
+                } else {
+                    let lastRound = 0;
+                    n.lines.forEach(function (l) {
+                        if (l.roundNo !== lastRound) {
+                            if (lastRound !== 0) { html += '<br>'; }
+                            html += '<span class="round-sep">第' + l.roundNo + '轮</span>';
+                            lastRound = l.roundNo;
+                        }
+                        let cls = l.valid ? '' : 'line-void';
+                        let tag = l.valid ? '' : '（' + (l.voidReason === 'reject' ? '打回抹去' : '改口作废旧笔') + '）';
+                        html += '<div class="' + cls + '" style="margin:4px 0;">'
+                            + '<span class="layui-badge layui-bg-blue">' + esc(l.seatName) + '</span> '
+                            + esc(l.signer) + ' 写：<b>' + esc(l.verdict) + '</b>'
+                            + tag + ' <span style="color:#999;font-size:12px;">次第' + l.lineSeq + ' · ' + (l.createTime || '')
+                            + (l.note ? ' · ' + esc(l.note) : '') + '</span></div>';
+                    });
+                }
+                html += '</div>';
+
+                // 只有亮着的口摆录入；已签数没有录入格，席位结论才是落笔处
+                if (n.lit && !finished) {
+                    html += '<div style="padding:0 12px 12px 12px;" class="sign-box" data-node="' + n.nodeNo + '">'
+                        + '<div class="layui-form-item" style="margin-bottom:8px;">'
+                        + '<select class="seat-sel layui-input" style="width:200px;display:inline-block;">';
+                    n.nodeNo === 0
+                        ? html += seatOption('HOUSEHOLD')
+                        : n.nodeNo === 1
+                            ? html += seatOption('BUILDER') + seatOption('ASSESSOR')
+                            : html += seatOption('DISTRICT') + seatOption('CITY');
+                    html += '</select>'
+                        + '<input class="signer layui-input" placeholder="落笔人（当场签字那位）" style="width:180px;display:inline-block;margin:0 8px;">'
+                        + '<select class="verdict layui-input" style="width:90px;display:inline-block;">'
+                        + '<option value="可">可</option><option value="不可">不可</option></select>'
+                        + '<input class="note layui-input" placeholder="附言（可空）" style="width:200px;display:inline-block;margin:0 8px;">'
+                        + '<button class="pear-btn pear-btn-primary pear-btn-sm btn-sign">落笔</button>'
+                        + '</div><div class="sign-msg" style="color:#FF5722;"></div></div>';
+                }
+                html += '</div>';
+            });
+            $('#nodes').html(html);
+
+            $('.btn-sign').on('click', function () {
+                let box = $(this).closest('.sign-box');
+                let nodeNo = parseInt(box.data('node'), 10);
+                let data = {
+                    billId: BILL_ID,
+                    nodeNo: nodeNo,
+                    seatKey: box.find('.seat-sel').val(),
+                    signer: box.find('.signer').val(),
+                    verdict: box.find('.verdict').val(),
+                    note: box.find('.note').val()
+                };
+                if (!data.signer || !$.trim(data.signer)) {
+                    box.find('.sign-msg').text('落笔人空着，这笔不知道是谁签的');
+                    return;
+                }
+                let loading = layer.load();
+                $.post(MODULE_PATH + 'sign', data, function (res) {
+                    layer.close(loading);
+                    if (res.code === 200) {
+                        layer.msg('落笔已留底', {icon: 1, time: 900}, load);
+                        if (parent.window.reloadBillTable) {
+                            parent.window.reloadBillTable();
+                        }
+                    } else {
+                        box.find('.sign-msg').text(res.msg);
+                    }
+                }, 'json');
+            });
+        }
+
+        function seatOption(key) {
+            return '<option value="' + key + '">' + SEAT_LABEL[key] + '</option>';
+        }
+
+        load();
+    });
+</script>
+</html>

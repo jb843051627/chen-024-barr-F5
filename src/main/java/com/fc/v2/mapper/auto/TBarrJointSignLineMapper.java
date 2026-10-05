@@ -1,0 +1,14 @@
+package com.fc.v2.mapper.auto;
+
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.fc.v2.model.auto.TBarrJointSignLine;
+
+/**
+ * 联户签认落笔留痕数据层（只追加，服务里没有改行删行的路）。
+ *
+ * @author fuce
+ * @date 2026-10-05
+ */
+public interface TBarrJointSignLineMapper extends BaseMapper<TBarrJointSignLine> {
+
+}

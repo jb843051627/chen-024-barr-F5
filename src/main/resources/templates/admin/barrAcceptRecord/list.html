@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org" xmlns:sec="http://www.pollix.at/thymeleaf/shiro">
+<head>
+    <th:block th:include="include :: header('当场验收记录（受理簿）')"/>
+</head>
+<body class="pear-container">
+<div class="layui-card">
+    <div class="layui-card-body">
+        <span class="layui-badge layui-bg-blue">受理簿</span>
+        <span class="layui-word-aux">一个楼组几户一道改，一场验收落一行；联户验收签认单只能由这里的某一场关联带出，别处另起手建的一张不算</span>
+    </div>
+</div>
+
+<div class="layui-card">
+    <div class="layui-card-body">
+        <table id="accept-table" lay-filter="accept-table"></table>
+    </div>
+</div>
+</body>
+
+<script type="text/html" id="accept-toolbar">
+    <button shiro:hasPermission="barr:barrAccept:register" class="pear-btn pear-btn-primary pear-btn-md" lay-event="register">
+        <i class="layui-icon layui-icon-add-1"></i> 当场落簿
+    </button>
+</script>
+
+<script type="text/html" id="accept-bar">
+    <button shiro:hasPermission="barr:barrJointSign:open" class="pear-btn pear-btn-warming pear-btn-sm" lay-event="openBill" title="由这场验收带出签认单（同场只一张）"><i class="layui-icon layui-icon-form"></i> 带签认单</button>
+</script>
+
+<th:block th:include="include :: footer"/>
+<script>
+    layui.use(['table', 'jquery'], function () {
+        let table = layui.table;
+        let $ = layui.jquery;
+        let MODULE_PATH = rootPath + "/BarrAcceptRecordController/";
+        let SIGN_PATH = rootPath + "/BarrJointSignController/";
+
+        table.render({
+            elem: '#accept-table',
+            url: MODULE_PATH + 'list',
+            page: true,
+            method: 'get',
+            limit: 10,
+            limits: [10, 20, 50],
+            skin: 'line',
+            toolbar: '#accept-toolbar',
+            cols: [[
+                {title: 'ID', field: 'id', hide: true},
+                {title: '受理簿记录号', field: 'acceptNo', width: 180},
+                {title: '楼组片号', field: 'groupNo', width: 150},
+                {title: '底册代号', field: 'archNo', width: 90},
+                {title: '底册全称', field: 'archName', minWidth: 220},
+                {title: '所在街', field: 'streetName', width: 110},
+                {title: '合验户数', field: 'siteCount', width: 90, align: 'center'},
+                {title: '当场时刻', field: 'acceptTime', width: 170},
+                {title: '落笔者', field: 'holder', width: 100},
+                {title: '操作', toolbar: '#accept-bar', width: 130, align: 'center', fixed: 'right'}
+            ]]
+        });
+
+        table.on('toolbar(accept-table)', function (obj) {
+            if (obj.event === 'register') {
+                layer.open({
+                    type: 2, title: '当场验收落簿', shade: 0.1, area: ['620px', '500px'],
+                    content: MODULE_PATH + 'register'
+                });
+            }
+        });
+
+        table.on('tool(accept-table)', function (obj) {
+            let d = obj.data;
+            if (obj.event === 'openBill') {
+                layer.open({
+                    type: 2, title: '由当场验收带出签认单（' + d.acceptNo + '）', shade: 0.1, area: ['560px', '420px'],
+                    content: SIGN_PATH + 'openPage/' + d.id
+                });
+            }
+        });
+    });
+</script>
+</html>
