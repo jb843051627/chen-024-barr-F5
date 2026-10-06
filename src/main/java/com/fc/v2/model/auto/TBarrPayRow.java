@@ -57,6 +57,21 @@ public class TBarrPayRow implements Serializable {
     @ApiModelProperty(value = "本行验收合格处数")
     private BigDecimal qualiNum;
 
+    /** 验收凭证影像（没随册来的行按没备齐办：送回） */
+    @TableField("voucher_img")
+    @ApiModelProperty(value = "验收凭证影像")
+    private String voucherImg;
+
+    /** 原路送回的缘故（写在行上，随回执带出） */
+    @TableField("return_reason")
+    @ApiModelProperty(value = "原路送回的缘故")
+    private String returnReason;
+
+    /** 层级 0现行 1往期（连着两个拨付年度未勾的挪入） */
+    @TableField("past_flag")
+    @ApiModelProperty(value = "层级 0现行 1往期")
+    private Integer pastFlag;
+
     /** 拨付口径（区级／市级两条来路） */
     @TableField("pay_kind")
     @ApiModelProperty(value = "拨付口径（区级／市级两条来路）")
@@ -145,6 +160,30 @@ public class TBarrPayRow implements Serializable {
 
     public void setQualiNum(BigDecimal qualiNum) {
         this.qualiNum = qualiNum;
+    }
+
+    public String getVoucherImg() {
+        return voucherImg;
+    }
+
+    public void setVoucherImg(String voucherImg) {
+        this.voucherImg = voucherImg;
+    }
+
+    public String getReturnReason() {
+        return returnReason;
+    }
+
+    public void setReturnReason(String returnReason) {
+        this.returnReason = returnReason;
+    }
+
+    public Integer getPastFlag() {
+        return pastFlag;
+    }
+
+    public void setPastFlag(Integer pastFlag) {
+        this.pastFlag = pastFlag;
     }
 
     public String getPayKind() {

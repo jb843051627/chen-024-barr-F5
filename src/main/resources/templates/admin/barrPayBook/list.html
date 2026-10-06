@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org" xmlns:sec="http://www.pollix.at/thymeleaf/shiro">
+<head>
+    <th:block th:include="include :: header('补助核销册')"/>
+</head>
+<body class="pear-container">
+<div class="layui-card">
+    <div class="layui-card-body">
+        <span class="layui-badge layui-bg-blue">核销册</span>
+        <span class="layui-word-aux">一册一次递齐、整册进门；同一册码第二遍只照面不翻账；回执三个数回库一行一行数出来，屏上先亮的不作数</span>
+    </div>
+</div>
+
+<div class="layui-card">
+    <div class="layui-card-body">
+        <table id="book-table" lay-filter="book-table"></table>
+    </div>
+</div>
+
+<div class="layui-card" id="row-card" style="display:none">
+    <div class="layui-card-header" id="row-card-title">册行</div>
+    <div class="layui-card-body">
+        <table id="row-table" lay-filter="row-table"></table>
+    </div>
+</div>
+
+<!-- 进门那一道手续：册头几格 + 整册行一次递齐 -->
+<script type="text/html" id="intake-dialog">
+    <div style="padding: 15px;">
+        <form class="layui-form" lay-filter="intake-form">
+            <div class="layui-form-item">
+                <label class="layui-form-label">册码</label>
+                <div class="layui-input-block">
+                    <input type="text" id="f-batchNo" placeholder="月度补助核销册码" class="layui-input"/>
+                </div>
+            </div>
+            <div class="layui-form-item">
+                <label class="layui-form-label">街道代号</label>
+                <div class="layui-input-block">
+                    <input type="text" id="f-streetCode" placeholder="街道转递带来的街代号；区里自录可空" class="layui-input"/>
+                </div>
+            </div>
+            <div class="layui-form-item">
+                <label class="layui-form-label">拨付口径</label>
+                <div class="layui-input-block">
+                    <input type="text" id="f-payKind" placeholder="区级／市级（两条来路进同一道门）" class="layui-input"/>
+                </div>
+            </div>
+            <div class="layui-form-item">
+                <label class="layui-form-label">拨付年度</label>
+                <div class="layui-input-block">
+                    <input type="text" id="f-payYear" placeholder="如 2026；空着按进门那年落" class="layui-input"/>
+                </div>
+            </div>
+            <div class="layui-form-item">
+                <label class="layui-form-label">自报行数</label>
+                <div class="layui-input-block">
+                    <input type="text" id="f-declaredRows" placeholder="册头自报几行；与实际不合以实际为准" class="layui-input"/>
+                </div>
+            </div>
+            <div class="layui-form-item">
+                <label class="layui-form-label">册行</label>
+                <div class="layui-input-block">
+                    <textarea id="f-rows" class="layui-textarea" style="min-height:180px"
+                              placeholder="一行一条：进度卡代号,请领额,合格处数,影像&#10;两个数得一块儿递，缺任一个都不许替它凑；行次不给手填，进门由系统排"></textarea>
+                </div>
+            </div>
+        </form>
+    </div>
+</script>
+
+<script type="text/html" id="book-toolbar">
+    <button shiro:hasPermission="barr:barrPayBook:intake" class="pear-btn pear-btn-primary pear-btn-md" lay-event="intake">
+        <i class="layui-icon layui-icon-add-1"></i> 整册进门
+    </button>
+    <button shiro:hasPermission="barr:barrPayBook:movePast" class="pear-btn pear-btn-md" lay-event="movePast" title="连着两个拨付年度未勾的挪往期层">
+        <i class="layui-icon layui-icon-history"></i> 未勾挪往期
+    </button>
+</script>
+
+<script type="text/html" id="book-bar">
+    <button shiro:hasPermission="barr:barrPayBook:receipt" class="pear-btn pear-btn-primary pear-btn-sm" lay-event="receipt" title="回执三数回库数出来"><i class="layui-icon layui-icon-list"></i> 回执</button>
+    <button shiro:hasPermission="barr:barrPayBook:list" class="pear-btn pear-btn-sm" lay-event="rows" title="现行名单"><i class="layui-icon layui-icon-table"></i> 现行行</button>
+    <button shiro:hasPermission="barr:barrPayBook:past" class="pear-btn pear-btn-sm" lay-event="past" title="往期层照旧翻得着"><i class="layui-icon layui-icon-history"></i> 往期</button>
+    <button shiro:hasPermission="barr:barrPayBook:audit" class="pear-btn pear-btn-warming pear-btn-sm" lay-event="audit" title="行去向与回执三数互相点名"><i class="layui-icon layui-icon-form"></i> 对账</button>
+    <button shiro:hasPermission="barr:barrPayBook:withdraw" class="pear-btn pear-btn-danger pear-btn-sm" lay-event="withdraw" title="确实要动先撤册，撤完再重新递"><i class="layui-icon layui-icon-delete"></i> 撤册</button>
+</script>
+
+<th:block th:include="include :: footer"/>
+<script>
+    layui.use(['table', 'jquery', 'layer'], function () {
+        let table = layui.table;
+        let $ = layui.jquery;
+        let layer = layui.layer;
+        let MODULE_PATH = rootPath + "/BarrPayBookController/";
+
+        table.render({
+            elem: '#book-table',
+            url: MODULE_PATH + 'list',
+            page: true,
+            method: 'get',
+            limit: 10,
+            limits: [10, 20, 50],
+            skin: 'line',
+            toolbar: '#book-toolbar',
+            cols: [[
+                {title: 'ID', field: 'id', hide: true},
+                {title: '册码', field: 'batchNo', width: 180},
+                {title: '街道', field: 'streetName', width: 110, templet: d => d.streetName || (d.streetCode || '')},
+                {title: '拨付口径', field: 'payKind', width: 100},
+                {title: '拨付年度', field: 'payYear', width: 90, align: 'center'},
+                {title: '自报行数', field: 'declaredRows', width: 90, align: 'center'},
+                {
+                    title: '册情形', field: 'status', width: 100, align: 'center', templet: function (d) {
+                        if (d.status === 1) return '<span class="layui-badge layui-bg-green">已核讫</span>';
+                        if (d.status === 2) return '<span class="layui-badge layui-bg-gray">空册</span>';
+                        if (d.status === 9) return '<span class="layui-badge layui-bg-black">已撤册</span>';
+                        return '<span class="layui-badge">在办</span>';
+                    }
+                },
+                {title: '进门时刻', field: 'createTime', width: 170},
+                {title: '操作', toolbar: '#book-bar', width: 330, align: 'center', fixed: 'right'}
+            ]]
+        });
+
+        function showRows(batchNo, past) {
+            $('#row-card').show();
+            $('#row-card-title').text((past ? '往期层：' : '现行名单：') + batchNo);
+            table.render({
+                elem: '#row-table',
+                url: MODULE_PATH + (past ? 'pastRows' : 'rows'),
+                where: {batchNo: batchNo},
+                page: true,
+                method: 'get',
+                limit: 10,
+                skin: 'line',
+                cols: [[
+                    {title: '行次', field: 'rowNo', width: 70, align: 'center'},
+                    {title: '进度卡代号', field: 'itemCode', width: 160},
+                    {title: '请领额', field: 'qty', width: 110, align: 'right'},
+                    {title: '合格处数', field: 'qualiNum', width: 90, align: 'right'},
+                    {title: '影像', field: 'voucherImg', width: 140},
+                    {
+                        title: '去向', field: 'status', width: 90, align: 'center', templet: function (d) {
+                            if (d.status === 1) return '<span class="layui-badge layui-bg-green">收下</span>';
+                            if (d.status === 2) return '<span class="layui-badge layui-bg-orange">送回</span>';
+                            return '<span class="layui-badge layui-bg-gray">未勾</span>';
+                        }
+                    },
+                    {title: '送回缘故', field: 'returnReason', minWidth: 220}
+                ]]
+            });
+        }
+
+        function showReceipt(r) {
+            let html = '<div style="padding:15px;line-height:2">'
+                + '<b>' + (r.message || '') + '</b><br/>'
+                + '原报 <b>' + r.reportedRows + '</b> 行　落地 <b>' + r.landedRows + '</b> 行　退回 <b>' + r.returnedRows + '</b> 行'
+                + (r.empty ? '　<span class="layui-badge layui-bg-gray">空册</span>' : '');
+            if (r.returnedItems && r.returnedItems.length) {
+                html += '<hr/>没落成的行（纸面行次／缘故）：<br/>';
+                r.returnedItems.forEach(function (it) {
+                    html += '行次' + it.rowNo + '：' + (it.reason || '') + '<br/>';
+                });
+            }
+            if (r.problems && r.problems.length) {
+                html += '<hr/>合不上点名：<br/>';
+                r.problems.forEach(function (p) {
+                    html += p + '<br/>';
+                });
+            }
+            html += '</div>';
+            layer.open({type: 1, title: '回执（' + r.batchNo + '）', shade: 0.1, area: ['560px', '480px'], content: html});
+        }
+
+        table.on('toolbar(book-table)', function (obj) {
+            if (obj.event === 'intake') {
+                layer.open({
+                    type: 1, title: '整册进门（一册一次递齐）', shade: 0.1, area: ['640px', '620px'],
+                    content: $('#intake-dialog').html(),
+                    btn: ['递册进门', '取消'],
+                    yes: function (index) {
+                        let lines = ($('#f-rows').val() || '').split('\n');
+                        let rows = [];
+                        for (let i = 0; i < lines.length; i++) {
+                            let line = lines[i].trim();
+                            if (!line) continue;
+                            let c = line.split(',');
+                            rows.push({
+                                itemCode: (c[0] || '').trim(),
+                                qty: (c[1] || '').trim(),
+                                qualiNum: (c[2] || '').trim(),
+                                voucherImg: (c[3] || '').trim()
+                            });
+                        }
+                        $.ajax({
+                            url: MODULE_PATH + 'intake',
+                            type: 'post',
+                            contentType: 'application/json',
+                            data: JSON.stringify({
+                                batchNo: $('#f-batchNo').val(),
+                                streetCode: $('#f-streetCode').val(),
+                                payKind: $('#f-payKind').val(),
+                                payYear: $('#f-payYear').val(),
+                                declaredRows: $('#f-declaredRows').val(),
+                                rows: rows
+                            }),
+                            success: function (res) {
+                                if (res.code === 200) {
+                                    layer.close(index);
+                                    showReceipt(res.data);
+                                    table.reload('book-table');
+                                } else {
+                                    layer.msg(res.msg || '这一趟没进门', {icon: 2});
+                                }
+                            }
+                        });
+                    }
+                });
+            }
+            if (obj.event === 'movePast') {
+                layer.prompt({title: '按本年度挪往期（连着两个拨付年度未勾的挪走）', formType: 0, value: new Date().getFullYear()}, function (val, index) {
+                    $.post(MODULE_PATH + 'movePast', {currentPayYear: val}, function (res) {
+                        layer.msg(res.msg || res, {icon: res.code === 200 ? 1 : 2});
+                        table.reload('book-table');
+                    });
+                    layer.close(index);
+                });
+            }
+        });
+
+        table.on('tool(book-table)', function (obj) {
+            let d = obj.data;
+            if (obj.event === 'receipt') {
+                $.get(MODULE_PATH + 'receipt', {batchNo: d.batchNo}, function (res) {
+                    if (res.code === 200) showReceipt(res.data);
+                    else layer.msg(res.msg || '给不了回执', {icon: 2});
+                });
+            }
+            if (obj.event === 'rows') showRows(d.batchNo, false);
+            if (obj.event === 'past') showRows(d.batchNo, true);
+            if (obj.event === 'audit') {
+                $.get(MODULE_PATH + 'audit', {batchNo: d.batchNo}, function (res) {
+                    if (res.code !== 200) {
+                        layer.msg(res.msg || '对不了账', {icon: 2});
+                        return;
+                    }
+                    let a = res.data;
+                    let html = '<div style="padding:15px;line-height:2">'
+                        + (a.matched ? '<b>对得拢</b>' : '<b style="color:red">合不上</b>') + '<br/>'
+                        + '原报 ' + a.reportedRows + ' 行　落地 ' + a.landedRows + ' 行　退回 ' + a.returnedRows + ' 行<br/>';
+                    (a.problems || []).forEach(function (p) {
+                        html += p + '<br/>';
+                    });
+                    html += '</div>';
+                    layer.open({type: 1, title: '对账（' + a.batchNo + '）', shade: 0.1, area: ['560px', '480px'], content: html});
+                });
+            }
+            if (obj.event === 'withdraw') {
+                layer.confirm('撤册留底、全册行一并撤下，撤完才许重新递。撤「' + d.batchNo + '」？', function (index) {
+                    $.post(MODULE_PATH + 'withdraw', {batchNo: d.batchNo}, function (res) {
+                        layer.msg(res.msg || res, {icon: res.code === 200 ? 1 : 2});
+                        table.reload('book-table');
+                    });
+                    layer.close(index);
+                });
+            }
+        });
+    });
+</script>
+</body>
+</html>
