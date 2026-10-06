@@ -37,21 +37,32 @@ CREATE TABLE IF NOT EXISTS t_barr_case_flow (
 CREATE TABLE IF NOT EXISTS t_barr_pay_row (
   id bigint NOT NULL COMMENT '主键',
   batch_no varchar(64) DEFAULT NULL COMMENT '月度补助核销册码',
-  row_no int DEFAULT NULL COMMENT '原报行次',
-  item_code varchar(64) DEFAULT NULL COMMENT '被对上的改造进度卡代号',
+  round_no int NOT NULL DEFAULT '1' COMMENT '第几趟递的（撤册办完重新递另起一轮，两轮分开放；旧行按1接住）',
+  row_no int DEFAULT NULL COMMENT '原报行次（进门头一步由系统按落库先后排上，排定不再挪，不给手填）',
+  item_code varchar(64) DEFAULT NULL COMMENT '被对上的改造进度卡代号（认户只认这个，户名对的一律不算）',
   qty decimal(12,2) DEFAULT NULL COMMENT '本行请领补助额',
-  quali_num decimal(12,2) DEFAULT NULL COMMENT '本行验收合格处数',
+  quali_num decimal(12,2) DEFAULT NULL COMMENT '本行验收合格处数（与请领额一块儿递，缺任一个不许替它凑）',
+  voucher_img varchar(128) DEFAULT NULL COMMENT '验收凭证影像（随册递来的影像号；空着=没备齐，行送回）',
   pay_kind varchar(32) DEFAULT NULL COMMENT '拨付口径（区级／市级两条来路）',
-  status int DEFAULT NULL COMMENT '行落地情形 0未勾 1已收下 2已送回',
-  del_flag int DEFAULT '0' COMMENT '删除标记 0正常 1删除',
+  status int DEFAULT NULL COMMENT '行落地情形 0未勾 1已收下 2已送回（只此三格）',
+  return_reason varchar(255) DEFAULT NULL COMMENT '送回缘故（送回行必落在行上；收下/未勾为空）',
+  past_flag int NOT NULL DEFAULT '0' COMMENT '往期层标记 0现行 1已挪往期（连着两个拨付年度没着落的未勾行；只朝旧册开）',
+  del_flag int DEFAULT '0' COMMENT '删除标记 0正常 1删除（撤册那一轮的行置1留底，不真抽走）',
   create_by varchar(64) DEFAULT NULL COMMENT '创建者',
-  create_time datetime DEFAULT NULL COMMENT '创建时间',
+  create_time datetime DEFAULT NULL COMMENT '创建时间（落库那一刻；挪往期按它的年度数）',
   update_by varchar(64) DEFAULT NULL COMMENT '更新者',
   update_time datetime DEFAULT NULL COMMENT '更新时间',
   remark varchar(500) DEFAULT NULL COMMENT '备注',
   PRIMARY KEY (id),
-  UNIQUE KEY uk_batch_row (batch_no,row_no)
+  UNIQUE KEY uk_batch_round_row (batch_no,round_no,row_no)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='补助核销行';
+
+-- 旧库迁移（原 uk_batch_row 换成带轮次的）：
+-- ALTER TABLE t_barr_pay_row DROP INDEX uk_batch_row, ADD UNIQUE KEY uk_batch_round_row (batch_no,round_no,row_no);
+-- ALTER TABLE t_barr_pay_row ADD COLUMN round_no int NOT NULL DEFAULT 1 AFTER batch_no,
+--   ADD COLUMN voucher_img varchar(128) DEFAULT NULL AFTER quali_num,
+--   ADD COLUMN return_reason varchar(255) DEFAULT NULL AFTER status,
+--   ADD COLUMN past_flag int NOT NULL DEFAULT 0 AFTER return_reason;
 
 CREATE TABLE IF NOT EXISTS t_barr_sign_bill (
   id bigint NOT NULL COMMENT '主键',
@@ -425,4 +436,86 @@ INSERT IGNORE INTO t_barr_accept_record (id, accept_no, group_no, arch_id, arch_
 SELECT 8024001901, 'YS-20261005-0001', '祥和楼组1栋', a.id, a.arch_no, a.arch_name, a.arch_kind, 'BSJD', '白沙街道', 3, NOW(), 'seed', 'seed', NOW(), '梅坂旧案之后，新规矩头一场：三口当面坐定，逐口点齐'
 FROM t_barr_arch a
 WHERE a.id = 0 AND a.del_flag = 0;
+
+-- ============================ 补助核销册（一道门） ============================
+-- 册子进门只此一道手续：册头先点行数，随后逐行判收判退，末了回执三数一并轧出，中途不过第二处的手。
+-- 册头这本与 t_barr_pay_row 那套说的是同一批行（book_no+round_no 两边对齐），两处联动；
+-- 册头那格写法（declared_rows）与实际递来的对不上时，以逐行落库点出来的数为准——照面而不翻账。
+
+-- 核销册头：一册一轮一行。回执三数在进门那一趟回库一行一行点出来后落在这里，
+-- 事后对账（audit）拿它同库里现点的数照面，合不上的行点名报出来。
+CREATE TABLE IF NOT EXISTS t_barr_pay_book (
+  id bigint NOT NULL COMMENT '主键',
+  book_no varchar(64) NOT NULL COMMENT '月度补助核销册码',
+  round_no int NOT NULL DEFAULT '1' COMMENT '第几趟递的（撤册办完重新递另起一轮）',
+  declared_rows int DEFAULT NULL COMMENT '册头那格写法：报册方自称的行数（只照面不翻账，作准的是逐行点出来的数）',
+  src_kind varchar(16) DEFAULT NULL COMMENT '册子来路 DISTRICT区里自录 / STREET街道转递（两条来路进同一道门，第二遍不在别处另起一册）',
+  street_code varchar(40) DEFAULT NULL COMMENT '报册街道代号（当地那条封顶线按它寻）',
+  reported_rows int DEFAULT NULL COMMENT '回执·册上原报几行（进门那一趟回库点出来的，屏上先亮的不作数）',
+  landed_rows int DEFAULT NULL COMMENT '回执·这一趟落地几行（收下+未勾）',
+  returned_rows int DEFAULT NULL COMMENT '回执·原路退回几行（退回+落地=原报）',
+  check_no varchar(80) DEFAULT NULL COMMENT '核讫号（空册不出：一行都没落着的册用不着它）',
+  status int NOT NULL DEFAULT '0' COMMENT '册情形 0在册 1已撤（撤册手续办完才许同册码重新递）',
+  create_by varchar(64) DEFAULT NULL COMMENT '创建者',
+  create_time datetime DEFAULT NULL COMMENT '创建时间',
+  update_by varchar(64) DEFAULT NULL COMMENT '更新者',
+  update_time datetime DEFAULT NULL COMMENT '更新时间',
+  remark varchar(500) DEFAULT NULL COMMENT '备注',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_book_round (book_no,round_no)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='补助核销册头（一道门）';
+
+-- 当地请领封顶线：一街一行。本行请领额高过这条线的原路送回；没有行=这条街不卡。
+CREATE TABLE IF NOT EXISTS t_barr_pay_cap (
+  id bigint NOT NULL COMMENT '主键',
+  street_code varchar(40) NOT NULL COMMENT '街道代号（这条封顶线归哪条街）',
+  cap_qty decimal(12,2) NOT NULL COMMENT '本行请领额封顶（高过它的行原路送回，缘故写在行上）',
+  create_by varchar(64) DEFAULT NULL COMMENT '创建者',
+  create_time datetime DEFAULT NULL COMMENT '创建时间',
+  update_by varchar(64) DEFAULT NULL COMMENT '更新者',
+  update_time datetime DEFAULT NULL COMMENT '更新时间',
+  remark varchar(500) DEFAULT NULL COMMENT '备注',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_cap_street (street_code)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='当地请领封顶线';
+
+-- 两条街封顶线种子（没有行=不卡，这里给两条示范街立上）
+INSERT IGNORE INTO t_barr_pay_cap (id, street_code, cap_qty, create_by, create_time, remark)
+VALUES (8024002001, 'BSJD', 5000.00, 'seed', NOW(), '白沙街道当地封顶线（种子）'),
+       (8024002002, 'OTJD', 3000.00, 'seed', NOW(), '藕塘街道当地封顶线（种子）');
+
+-- 核销册一道门：菜单与按钮权限（挂在系统管理目录 411522822607867904 下）
+INSERT IGNORE INTO t_sys_permission (id, name, descripion, url, is_blank, pid, perms, type, icon, order_num, visible, create_by, create_time)
+VALUES (8024001120, '补助核销册', '核销册一道门展示', '/BarrPayBookController/view', 0, 411522822607867904, 'barr:barrPayBook:view', 1, 'fa fa-archive', 94, 0, 'seed', NOW()),
+       (8024001121, '核销册集合', '在册册头集合', '/BarrPayBookController/list', 0, 8024001120, 'barr:barrPayBook:list', 2, NULL, NULL, 0, 'seed', NOW()),
+       (8024001122, '整册进门', '一册一次递齐，只此一道手续', '/BarrPayBookController/enter', 0, 8024001120, 'barr:barrPayBook:enter', 2, NULL, NULL, 0, 'seed', NOW()),
+       (8024001123, '回执翻看', '回执三数只认回库点出来的', '/BarrPayBookController/receipt', 0, 8024001120, 'barr:barrPayBook:receipt', 2, NULL, NULL, 0, 'seed', NOW()),
+       (8024001124, '对账点名', '行上去向与回执三数彼此对上，合不上点名', '/BarrPayBookController/audit', 0, 8024001120, 'barr:barrPayBook:audit', 2, NULL, NULL, 0, 'seed', NOW()),
+       (8024001125, '撤册手续', '办完才许同册码重新递', '/BarrPayBookController/withdraw', 0, 8024001120, 'barr:barrPayBook:withdraw', 2, NULL, NULL, 0, 'seed', NOW()),
+       (8024001126, '往期层翻看', '往期那层照旧翻得着，一条不少', '/BarrPayBookController/past', 0, 8024001120, 'barr:barrPayBook:past', 2, NULL, NULL, 0, 'seed', NOW()),
+       (8024001127, '手动挪往期', '与年挪同一口子，连着两个拨付年度没着落的未勾行挪往期', '/BarrPayBookController/movePast', 0, 8024001120, 'barr:barrPayBook:movePast', 2, NULL, NULL, 0, 'seed', NOW());
+
+-- 街道岗 / 部岗：两岗都能看册、翻回执、看往期；进门、撤册、对账、挪往期归部岗
+INSERT IGNORE INTO t_sys_permission_role (id, role_id, permission_id)
+VALUES (8024001331, 8024001201, 8024001120),
+       (8024001332, 8024001201, 8024001121),
+       (8024001333, 8024001201, 8024001123),
+       (8024001334, 8024001201, 8024001126),
+       (8024001431, 8024001202, 8024001120),
+       (8024001432, 8024001202, 8024001121),
+       (8024001433, 8024001202, 8024001122),
+       (8024001434, 8024001202, 8024001123),
+       (8024001435, 8024001202, 8024001124),
+       (8024001436, 8024001202, 8024001125),
+       (8024001437, 8024001202, 8024001126),
+       (8024001438, 8024001202, 8024001127);
+
+-- 管理员（id=1）给核销册八项权限
+INSERT IGNORE INTO t_sys_permission_role (id, role_id, permission_id)
+SELECT 8024001560 + n, 488243256161730560, 8024001120 + n
+FROM (SELECT 0 n UNION SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5 UNION SELECT 6 UNION SELECT 7) t;
+
+-- 每年一趟：1 月 1 日凌晨 3:40 挪往期（连着两个拨付年度还没着落的未勾行挪去往期层；禁并发，错点不补跑）
+INSERT IGNORE INTO t_sys_quartz_job (id, job_name, job_group, invoke_target, cron_expression, misfire_policy, concurrent, status, create_by, create_time, remark)
+VALUES (8024001802, '补助核销往期年挪', 'BARR', 'payBookTask.movePast()', '0 40 3 1 1 ?', '2', '1', 0, 'seed', NOW(), '现行名单不再列它；往期那层照旧翻得着、一条不少');
 

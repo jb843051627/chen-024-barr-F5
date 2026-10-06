@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org" xmlns:sec="http://www.pollix.at/thymeleaf/shiro">
+<head>
+    <th:block th:include="include :: header('补助核销册')"/>
+</head>
+<body class="pear-container">
+<div class="layui-card">
+    <div class="layui-card-body">
+        <form class="layui-form" id="book-query-form">
+            <div class="layui-form-item">
+                <label class="layui-form-label">册码</label>
+                <div class="layui-input-inline">
+                    <input type="text" name="bookNo" placeholder="整段或开头几笔" class="layui-input">
+                </div>
+                <label class="layui-form-label">册情形</label>
+                <div class="layui-input-inline">
+                    <select name="status">
+                        <option value="">全部</option>
+                        <option value="0">在册</option>
+                        <option value="1">已撤</option>
+                    </select>
+                </div>
+                <button class="pear-btn pear-btn-md pear-btn-primary" lay-submit lay-filter="book-query">
+                    <i class="layui-icon layui-icon-search"></i> 查询
+                </button>
+                <button type="reset" class="pear-btn pear-btn-md">
+                    <i class="layui-icon layui-icon-refresh"></i> 重置
+                </button>
+                <button shiro:hasPermission="barr:barrPayBook:movePast" type="button"
+                        class="pear-btn pear-btn-md pear-btn-warming" id="btn-move-past">
+                    <i class="layui-icon layui-icon-release"></i> 手动挪往期
+                </button>
+                <span class="layui-badge layui-bg-gray">回执三数只认回库点出来的，屏上先亮的不作数</span>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="layui-card">
+    <div class="layui-card-body">
+        <table id="book-table" lay-filter="book-table"></table>
+    </div>
+</div>
+
+<div class="layui-card">
+    <div class="layui-card-header" id="rows-title">册上行（点「翻行」看一册；点「往期层」看挪走的）</div>
+    <div class="layui-card-body">
+        <table id="row-table" lay-filter="row-table"></table>
+    </div>
+</div>
+</body>
+
+<script type="text/html" id="book-status-tpl">
+    {{# if(d.status==1){ }}
+    <span class="layui-badge">已撤</span>
+    {{# } else { }}
+    <span class="layui-badge layui-bg-green">在册</span>
+    {{# } }}
+</script>
+
+<script type="text/html" id="book-bar-tpl">
+    <a class="pear-btn pear-btn-xs pear-btn-primary" lay-event="receipt">回执</a>
+    <a class="pear-btn pear-btn-xs" lay-event="rows">翻行</a>
+    {{# if(d.status==0){ }}
+    <a class="pear-btn pear-btn-xs pear-btn-warming" lay-event="audit">对账</a>
+    <a class="pear-btn pear-btn-xs pear-btn-danger" lay-event="withdraw">撤册</a>
+    {{# } }}
+</script>
+
+<script type="text/html" id="row-status-tpl">
+    {{# if(d.status==1){ }}
+    <span class="layui-badge layui-bg-green">收下</span>
+    {{# } else if(d.status==2){ }}
+    <span class="layui-badge">送回</span>
+    {{# } else { }}
+    <span class="layui-badge layui-bg-blue">未勾</span>
+    {{# } }}
+</script>
+
+<th:block th:include="include :: footer"/>
+<script>
+    layui.use(['table', 'form', 'jquery', 'layer'], function () {
+        let table = layui.table;
+        let form = layui.form;
+        let $ = layui.jquery;
+        let layer = layui.layer;
+        let MODULE_PATH = rootPath + "/BarrPayBookController/";
+
+        let bookCols = [[
+            {title: 'ID', field: 'id', hide: true},
+            {title: '册码', field: 'bookNo', width: 160},
+            {title: '轮次', field: 'roundNo', width: 70, align: 'center'},
+            {title: '来路', field: 'srcKind', width: 100, align: 'center'},
+            {title: '报册街道', field: 'streetCode', width: 100, align: 'center'},
+            {title: '册头那格', field: 'declaredRows', width: 90, align: 'center'},
+            {title: '原报', field: 'reportedRows', width: 80, align: 'center'},
+            {title: '落地', field: 'landedRows', width: 80, align: 'center'},
+            {title: '退回', field: 'returnedRows', width: 80, align: 'center'},
+            {title: '核讫号', field: 'checkNo', width: 170},
+            {title: '册情形', field: 'status', width: 90, templet: '#book-status-tpl'},
+            {title: '落库时刻', field: 'createTime', width: 160},
+            {title: '操作', width: 220, templet: '#book-bar-tpl', fixed: 'right'}
+        ]];
+
+        table.render({
+            elem: '#book-table',
+            url: MODULE_PATH + 'list',
+            page: true,
+            method: 'get',
+            limit: 10,
+            limits: [10, 20, 50],
+            cols: bookCols,
+            skin: 'line',
+            defaultToolbar: ['filter', 'print', 'exports']
+        });
+
+        let rowCols = [[
+            {title: '行次', field: 'rowNo', width: 80, align: 'center'},
+            {title: '进度卡代号', field: 'itemCode', width: 160},
+            {title: '请领额', field: 'qty', width: 110, align: 'right'},
+            {title: '合格处数', field: 'qualiNum', width: 100, align: 'center'},
+            {title: '影像', field: 'voucherImg', width: 130},
+            {title: '去向', field: 'status', width: 90, templet: '#row-status-tpl'},
+            {title: '送回缘故', field: 'returnReason', minWidth: 220},
+            {title: '备注', field: 'remark', minWidth: 160}
+        ]];
+
+        table.render({
+            elem: '#row-table',
+            data: [],
+            page: false,
+            cols: rowCols,
+            skin: 'line'
+        });
+
+        form.on('submit(book-query)', function () {
+            let q = {};
+            $('#book-query-form').serializeArray().forEach(function (kv) {
+                q[kv.name] = $.trim(kv.value);
+            });
+            table.reload('book-table', {where: q, page: {curr: 1}});
+            return false;
+        });
+
+        function showRows(title, url, where) {
+            $('#rows-title').text(title);
+            table.reload('row-table', {url: url, where: where});
+        }
+
+        table.on('tool(book-table)', function (obj) {
+            let d = obj.data;
+            if (obj.event === 'rows') {
+                showRows('册「' + d.bookNo + '」第' + d.roundNo + '轮的行', MODULE_PATH + 'rows', {bookNo: d.bookNo});
+            } else if (obj.event === 'receipt') {
+                $.get(MODULE_PATH + 'receipt', {bookNo: d.bookNo}, function (res) {
+                    let r = res.data || {};
+                    let html = '<b>' + (r.message || '') + '</b>'
+                        + '<br>原报：' + r.reported + '　落地：' + r.landed + '　退回：' + r.returned
+                        + (r.checkNo ? '<br>核讫号：' + r.checkNo : '<br>（空册不出核讫）');
+                    (r.returnedRows || []).forEach(function (x) {
+                        html += '<br>送回·行次' + x.rowNo + '：' + (x.reason || '');
+                    });
+                    (r.hangingRows || []).forEach(function (x) {
+                        html += '<br>未勾·行次' + x.rowNo + '：' + (x.itemCode || '');
+                    });
+                    (r.faceNotes || []).forEach(function (x) {
+                        html += '<br>照面：' + x;
+                    });
+                    layer.alert(html, {title: '回执·' + d.bookNo, icon: 7});
+                });
+            } else if (obj.event === 'audit') {
+                $.get(MODULE_PATH + 'audit', {bookNo: d.bookNo}, function (res) {
+                    let a = res.data || {};
+                    let html = a.consistent
+                        ? '两处合得上：回执三数与逐行点出来的彼此对得上'
+                        : '<b>合不上，点名：</b><br>' + (a.mismatches || []).join('<br>');
+                    layer.alert(html, {title: '对账·' + d.bookNo, icon: a.consistent ? 1 : 2});
+                });
+            } else if (obj.event === 'withdraw') {
+                layer.confirm('撤册手续办完，册「' + d.bookNo + '」第' + d.roundNo
+                    + '轮置已撤、行置删留底；同册码再递另起一轮。办不办？', function (idx) {
+                    layer.close(idx);
+                    $.post(MODULE_PATH + 'withdraw', {bookNo: d.bookNo}, function (res) {
+                        layer.msg(res.msg || '已办');
+                        table.reload('book-table');
+                    });
+                });
+            }
+        });
+
+        // 往期层：照旧翻得着、一条不少；只朝旧册开
+        $('#btn-move-past').on('click', function () {
+            let btn = $(this);
+            btn.attr('disabled', true);
+            $.ajax({
+                url: MODULE_PATH + 'movePast',
+                type: 'post',
+                success: function (res) {
+                    layer.alert(res.msg || '这一趟没挪动一行', {title: '挪往期', icon: 7});
+                },
+                complete: function () {
+                    btn.removeAttr('disabled');
+                }
+            });
+        });
+    });
+</script>
+</html>

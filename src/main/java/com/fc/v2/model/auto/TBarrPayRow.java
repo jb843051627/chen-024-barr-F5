@@ -37,7 +37,12 @@ public class TBarrPayRow implements Serializable {
     @ApiModelProperty(value = "月度补助核销册码")
     private String batchNo;
 
-    /** 原报行次 */
+    /** 第几趟递的（撤册办完重新递另起一轮，两轮分开放；旧行按1接住） */
+    @TableField("round_no")
+    @ApiModelProperty(value = "第几趟递的")
+    private Integer roundNo;
+
+    /** 原报行次（进门由系统按落库先后排上，排定不再挪，不给手填） */
     @TableField("row_no")
     @ApiModelProperty(value = "原报行次")
     private Integer rowNo;
@@ -57,6 +62,11 @@ public class TBarrPayRow implements Serializable {
     @ApiModelProperty(value = "本行验收合格处数")
     private BigDecimal qualiNum;
 
+    /** 验收凭证影像（随册递来的影像号；空着=没备齐，行送回） */
+    @TableField("voucher_img")
+    @ApiModelProperty(value = "验收凭证影像")
+    private String voucherImg;
+
     /** 拨付口径（区级／市级两条来路） */
     @TableField("pay_kind")
     @ApiModelProperty(value = "拨付口径（区级／市级两条来路）")
@@ -66,6 +76,16 @@ public class TBarrPayRow implements Serializable {
     @TableField("status")
     @ApiModelProperty(value = "行落地情形 0未勾 1已收下 2已送回")
     private Integer status;
+
+    /** 送回缘故（送回行必落在行上；收下/未勾为空） */
+    @TableField("return_reason")
+    @ApiModelProperty(value = "送回缘故")
+    private String returnReason;
+
+    /** 往期层标记 0现行 1已挪往期（只朝旧册开，新册走不到） */
+    @TableField("past_flag")
+    @ApiModelProperty(value = "往期层标记 0现行 1已挪往期")
+    private Integer pastFlag;
 
     /** 删除标记 0正常 1删除 */
     @TableField("del_flag")
@@ -115,6 +135,14 @@ public class TBarrPayRow implements Serializable {
         this.batchNo = batchNo;
     }
 
+    public Integer getRoundNo() {
+        return roundNo;
+    }
+
+    public void setRoundNo(Integer roundNo) {
+        this.roundNo = roundNo;
+    }
+
     public Integer getRowNo() {
         return rowNo;
     }
@@ -147,6 +175,14 @@ public class TBarrPayRow implements Serializable {
         this.qualiNum = qualiNum;
     }
 
+    public String getVoucherImg() {
+        return voucherImg;
+    }
+
+    public void setVoucherImg(String voucherImg) {
+        this.voucherImg = voucherImg;
+    }
+
     public String getPayKind() {
         return payKind;
     }
@@ -161,6 +197,22 @@ public class TBarrPayRow implements Serializable {
 
     public void setStatus(Integer status) {
         this.status = status;
+    }
+
+    public String getReturnReason() {
+        return returnReason;
+    }
+
+    public void setReturnReason(String returnReason) {
+        this.returnReason = returnReason;
+    }
+
+    public Integer getPastFlag() {
+        return pastFlag;
+    }
+
+    public void setPastFlag(Integer pastFlag) {
+        this.pastFlag = pastFlag;
     }
 
     public Integer getDelFlag() {
